@@ -33,6 +33,19 @@ def read_xer(path):
                 tables[current].append(line.split("\t"))
     return tables
 
+# TASK tablosundan: internal task id → task code, task name
+def build_task_map(xer):
+    TASK = xer.get("TASK", [])
+    id_to_code = {}
+    id_to_name = {}
+    for t in TASK:
+        tid = safe_int(t[1])
+        task_code = t[14] if len(t) > 14 else ""
+        task_name = t[15] if len(t) > 15 else ""
+        id_to_code[tid] = task_code
+        id_to_name[tid] = task_name
+    return id_to_code, id_to_name
+
 def map_task_columns(cols):
     colmap = {}
 
@@ -44,7 +57,7 @@ def map_task_columns(cols):
     ]
 
     float_keys = [
-        "total_float_hr_cnt",   # senin gerçek sütunun
+        "total_float_hr_cnt",
         "total_float", "float", "free_float",
         "remaining_float", "late_float",
         "float_hr_cnt", "float_day_cnt"
@@ -193,18 +206,23 @@ def analyze(xer):
         "ff_ss_ok": ff_ss_ok
     }
 
-def show_report(title, items):
+def show_report(title, items, results):
     win = tk.Toplevel()
     win.title(title)
     win.geometry("600x500")
 
     tree = ttk.Treeview(win, columns=("Aktivite"), show="headings")
-    tree.heading("Aktivite", text="Aktivite ID")
-    tree.column("Aktivite", width=550)
+    tree.heading("Aktivite", text="Task ID | Task Code | Task Name")
+    tree.column("Aktivite", width=580)
     tree.pack(fill="both", expand=True)
 
-    for i in items:
-        tree.insert("", "end", values=(i,))
+    code_map = results.get("code_map", {})
+    name_map = results.get("name_map", {})
+
+    for tid in items:
+        code = code_map.get(tid, "")
+        name = name_map.get(tid, "")
+        tree.insert("", "end", values=(f"{tid} | {code} | {name}",))
 
 def export_pdf(results):
     path = filedialog.asksaveasfilename(
@@ -245,14 +263,19 @@ def export_pdf(results):
     c.drawString(50, y, "Detaylı Uymayan Aktiviteler:")
     y -= 20
 
+    code_map = results.get("code_map", {})
+    name_map = results.get("name_map", {})
+
     def write_list(title, items):
         nonlocal y
         c.setFont("Helvetica-Bold", 11)
         c.drawString(60, y, title)
         y -= 20
         c.setFont("Helvetica", 10)
-        for item in items:
-            c.drawString(80, y, f"- Aktivite ID: {item}")
+        for tid in items:
+            code = code_map.get(tid, "")
+            name = name_map.get(tid, "")
+            c.drawString(80, y, f"- {tid} | {code} | {name}")
             y -= 15
             if y < 50:
                 c.showPage()
@@ -277,13 +300,24 @@ def export_excel(results):
 
     writer = pd.ExcelWriter(path, engine="xlsxwriter")
 
-    pd.DataFrame({"Aktivite": results["ff_list"] + results["ss_list"]}).to_excel(writer, sheet_name="FF_SS", index=False)
-    pd.DataFrame({"Aktivite": results["sf_list"]}).to_excel(writer, sheet_name="SF", index=False)
-    pd.DataFrame({"Aktivite": results["lag_list"]}).to_excel(writer, sheet_name="Lag", index=False)
-    pd.DataFrame({"Aktivite": results["open_start"]}).to_excel(writer, sheet_name="OpenStart", index=False)
-    pd.DataFrame({"Aktivite": results["open_finish"]}).to_excel(writer, sheet_name="OpenFinish", index=False)
-    pd.DataFrame({"Aktivite": results["long_duration"]}).to_excel(writer, sheet_name="LongDuration", index=False)
-    pd.DataFrame({"Aktivite": results["high_float"]}).to_excel(writer, sheet_name="HighFloat", index=False)
+    code_map = results.get("code_map", {})
+    name_map = results.get("name_map", {})
+
+    def write_sheet(name, ids):
+        df = pd.DataFrame({
+            "Task ID": ids,
+            "Task Code": [code_map.get(i, "") for i in ids],
+            "Task Name": [name_map.get(i, "") for i in ids],
+        })
+        df.to_excel(writer, sheet_name=name, index=False)
+
+    write_sheet("FF_SS", results["ff_list"] + results["ss_list"])
+    write_sheet("SF", results["sf_list"])
+    write_sheet("Lag", results["lag_list"])
+    write_sheet("OpenStart", results["open_start"])
+    write_sheet("OpenFinish", results["open_finish"])
+    write_sheet("LongDuration", results["long_duration"])
+    write_sheet("HighFloat", results["high_float"])
 
     writer.close()
 
@@ -308,7 +342,6 @@ def show_second(res):
 
     tree.pack(fill="both", expand=True)
 
-    # FF + SS
     if res["ff_ss_ok"]:
         aciklama = "FF ve SS ilişkileri toplam aktivite sayısının %20 sınırı içinde."
     else:
@@ -323,7 +356,6 @@ def show_second(res):
         "Detay"
     ))
 
-    # SF
     if res["sf"] == 0:
         aciklama = "Plan içerisinde SF (Start-to-Finish) ilişkisi bulunmamaktadır."
     else:
@@ -338,7 +370,6 @@ def show_second(res):
         "Detay"
     ))
 
-    # Lag
     if res["lag"] == 0:
         aciklama = "Hiçbir ilişkide lag kullanılmamıştır."
     else:
@@ -353,7 +384,6 @@ def show_second(res):
         "Detay"
     ))
 
-    # Open Start
     if len(res["open_start"]) == 0:
         aciklama = "Tüm aktivitelerin en az bir predecessor'ı bulunmaktadır."
     else:
@@ -368,7 +398,6 @@ def show_second(res):
         "Detay"
     ))
 
-    # Open Finish
     if len(res["open_finish"]) == 0:
         aciklama = "Tüm aktivitelerin en az bir successor'ı bulunmaktadır."
     else:
@@ -383,7 +412,6 @@ def show_second(res):
         "Detay"
     ))
 
-    # Duration > 14
     if len(res["long_duration"]) == 0:
         aciklama = "Hiçbir aktivitenin süresi 14 günü aşmamaktadır."
     else:
@@ -398,12 +426,11 @@ def show_second(res):
         "Detay"
     ))
 
-    # Float > %20
     if len(res["high_float"]) == 0:
         aciklama = "Hiçbir aktivitenin total float değeri proje süresinin %20’sini aşmamaktadır."
     else:
         aciklama = (
-            f"{len(res['high_float'])} aktivitenin total float değeri proje süresinin %20 limitini aşmaktadır. "
+            f"{len(res["high_float"])} aktivitenin total float değeri proje süresinin %20 limitini aşmaktadır. "
             "Yüksek float değerleri, ağ mantığının ve kritik yolun yeniden gözden geçirilmesini gerektirir."
         )
     tree.insert("", "end", values=(
@@ -421,19 +448,19 @@ def show_second(res):
         şart = values[0]
 
         if şart == "FF + SS Limit %20":
-            show_report("FF + SS İlişkileri", res["ff_list"] + res["ss_list"])
+            show_report("FF + SS İlişkileri", res["ff_list"] + res["ss_list"], res)
         elif şart == "SF ilişkisi olmamalı":
-            show_report("SF İlişkileri", res["sf_list"])
+            show_report("SF İlişkileri", res["sf_list"], res)
         elif şart == "Lag kullanımı minimum olmalı":
-            show_report("Lag İçeren Aktiviteler", res["lag_list"])
+            show_report("Lag İçeren Aktiviteler", res["lag_list"], res)
         elif şart == "Open‑Start olmamalı":
-            show_report("Open‑Start Aktiviteleri", res["open_start"])
+            show_report("Open‑Start Aktiviteleri", res["open_start"], res)
         elif şart == "Open‑Finish olmamalı":
-            show_report("Open‑Finish Aktiviteleri", res["open_finish"])
+            show_report("Open‑Finish Aktiviteleri", res["open_finish"], res)
         elif şart == "Aktivite süresi ≤ 14 gün":
-            show_report("14 Günden Uzun Aktiviteler", res["long_duration"])
+            show_report("14 Günden Uzun Aktiviteler", res["long_duration"], res)
         elif şart == "Float ≤ %20 limit":
-            show_report("Float Limitini Aşan Aktiviteler", res["high_float"])
+            show_report("Float Limitini Aşan Aktiviteler", res["high_float"], res)
 
     tree.bind("<Double-1>", on_click)
 
@@ -498,6 +525,12 @@ def show_first():
         if path:
             xer = read_xer(path)
             results = analyze(xer)
+
+            # analyze SONRASI EK ADIM: VLOOKUP map’leri ekle
+            code_map, name_map = build_task_map(xer)
+            results["code_map"] = code_map
+            results["name_map"] = name_map
+
             show_second(results)
 
     tk.Button(
