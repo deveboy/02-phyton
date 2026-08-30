@@ -33,7 +33,6 @@ def read_xer(path):
                 tables[current].append(line.split("\t"))
     return tables
 
-# TASK tablosundan: internal task id → task code, task name
 def build_task_map(xer):
     TASK = xer.get("TASK", [])
     id_to_code = {}
@@ -48,26 +47,22 @@ def build_task_map(xer):
 
 def map_task_columns(cols):
     colmap = {}
-
     duration_keys = [
         "orig_dur", "remain_dur", "target_dur", "act_dur",
         "duration", "recalc_dur", "at_complete_dur",
         "remain_work_qty", "target_work_qty", "act_work_qty",
         "remain_drtn_hr_cnt", "target_drtn_hr_cnt"
     ]
-
     float_keys = [
         "total_float_hr_cnt",
         "total_float", "float", "free_float",
         "remaining_float", "late_float",
         "float_hr_cnt", "float_day_cnt"
     ]
-
     start_keys = [
         "start_date", "early_start", "late_start",
         "act_start_date", "target_start_date"
     ]
-
     finish_keys = [
         "finish_date", "early_end_date", "late_end_date",
         "act_end_date", "target_end_date"
@@ -78,35 +73,29 @@ def map_task_columns(cols):
             if c.lower() == key:
                 colmap["duration"] = i + 1
                 break
-
     for key in float_keys:
         for i, c in enumerate(cols):
             if c.lower() == key:
                 colmap["float"] = i + 1
                 break
-
     for key in start_keys:
         for i, c in enumerate(cols):
             if c.lower() == key:
                 colmap["start"] = i + 1
                 break
-
     for key in finish_keys:
         for i, c in enumerate(cols):
             if c.lower() == key:
                 colmap["finish"] = i + 1
                 break
-
     return colmap
 
 def analyze(xer):
-
     TASK = xer.get("TASK", [])
     PRED = xer.get("TASKPRED", [])
     TASK_F = xer.get("TASK_F", [])
 
     colmap = map_task_columns(TASK_F)
-
     duration_col = colmap.get("duration")
     float_col = colmap.get("float")
     start_col = colmap.get("start")
@@ -119,16 +108,12 @@ def analyze(xer):
 
     for t in TASK:
         tid = safe_int(t[1])
-
         if duration_col and duration_col < len(t):
             durations[tid] = safe_float(t[duration_col])
-
         if float_col and float_col < len(t):
             floats[tid] = safe_float(t[float_col])
-
         if start_col and start_col < len(t):
             starts.append(safe_float(t[start_col]))
-
         if finish_col and finish_col < len(t):
             finishes.append(safe_float(t[finish_col]))
 
@@ -141,10 +126,8 @@ def analyze(xer):
 
     ff = ss = sf = 0
     lag_count = 0
-
     pred_ids = set()
     succ_ids = set()
-
     ff_list = []
     ss_list = []
     sf_list = []
@@ -153,7 +136,6 @@ def analyze(xer):
     for p in PRED:
         if len(p) < 8:
             continue
-
         task_id = safe_int(p[2])
         pred_task_id = safe_int(p[3])
         pred_type = p[6]
@@ -177,10 +159,8 @@ def analyze(xer):
             lag_list.append(task_id)
 
     task_ids = list(durations.keys())
-
     open_start = [tid for tid in task_ids if tid not in pred_ids]
     open_finish = [tid for tid in task_ids if tid not in succ_ids]
-
     long_duration = [tid for tid, d in durations.items() if d > 14]
     high_float = [tid for tid, fl in floats.items() if fl > float_limit]
 
@@ -212,17 +192,17 @@ def show_report(title, items, results):
     win.geometry("600x500")
 
     tree = ttk.Treeview(win, columns=("Aktivite"), show="headings")
-    tree.heading("Aktivite", text="Task ID | Task Code | Task Name")
+    tree.heading("Aktivite", text="Activity ID | Activity Name")
     tree.column("Aktivite", width=580)
     tree.pack(fill="both", expand=True)
 
-    code_map = results.get("code_map", {})
-    name_map = results.get("name_map", {})
+    code_map = results["code_map"]
+    name_map = results["name_map"]
 
     for tid in items:
         code = code_map.get(tid, "")
         name = name_map.get(tid, "")
-        tree.insert("", "end", values=(f"{tid} | {code} | {name}",))
+        tree.insert("", "end", values=(f"{code} | {name}",))
 
 def export_pdf(results):
     path = filedialog.asksaveasfilename(
@@ -237,11 +217,11 @@ def export_pdf(results):
 
     y = height - 50
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, y, "XER Quality Checker Raporu")
+    c.drawString(50, y, "XER Quality Checker Report")
     y -= 30
 
     c.setFont("Helvetica", 12)
-    c.drawString(50, y, "Kontrol Özeti:")
+    c.drawString(50, y, "Control Summary:")
     y -= 20
 
     summary = [
@@ -250,8 +230,8 @@ def export_pdf(results):
         f"Lag: {results['lag']}",
         f"Open-Start: {len(results['open_start'])}",
         f"Open-Finish: {len(results['open_finish'])}",
-        f">14 Gün: {len(results['long_duration'])}",
-        f"Float Limit Aşımı: {len(results['high_float'])}"
+        f">14 Days: {len(results['long_duration'])}",
+        f"Float Limit Exceeded: {len(results['high_float'])}"
     ]
 
     for line in summary:
@@ -260,11 +240,11 @@ def export_pdf(results):
 
     y -= 20
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, y, "Detaylı Uymayan Aktiviteler:")
+    c.drawString(50, y, "Detailed Non-Compliant Activities:")
     y -= 20
 
-    code_map = results.get("code_map", {})
-    name_map = results.get("name_map", {})
+    code_map = results["code_map"]
+    name_map = results["name_map"]
 
     def write_list(title, items):
         nonlocal y
@@ -275,18 +255,18 @@ def export_pdf(results):
         for tid in items:
             code = code_map.get(tid, "")
             name = name_map.get(tid, "")
-            c.drawString(80, y, f"- {tid} | {code} | {name}")
+            c.drawString(80, y, f"- {code} | {name}")
             y -= 15
             if y < 50:
                 c.showPage()
                 y = height - 50
 
-    write_list("SF İlişkileri:", results["sf_list"])
-    write_list("Lag İçeren Aktiviteler:", results["lag_list"])
+    write_list("SF Relationships:", results["sf_list"])
+    write_list("Activities with Lag:", results["lag_list"])
     write_list("Open-Start:", results["open_start"])
     write_list("Open-Finish:", results["open_finish"])
-    write_list("14 Günden Uzun Aktiviteler:", results["long_duration"])
-    write_list("Float Limitini Aşan Aktiviteler:", results["high_float"])
+    write_list("Activities Longer Than 14 Days:", results["long_duration"])
+    write_list("Activities Exceeding Float Limit:", results["high_float"])
 
     c.save()
 
@@ -300,14 +280,13 @@ def export_excel(results):
 
     writer = pd.ExcelWriter(path, engine="xlsxwriter")
 
-    code_map = results.get("code_map", {})
-    name_map = results.get("name_map", {})
+    code_map = results["code_map"]
+    name_map = results["name_map"]
 
     def write_sheet(name, ids):
         df = pd.DataFrame({
-            "Task ID": ids,
-            "Task Code": [code_map.get(i, "") for i in ids],
-            "Task Name": [name_map.get(i, "") for i in ids],
+            "Activity ID": [code_map.get(i, "") for i in ids],
+            "Activity Name": [name_map.get(i, "") for i in ids],
         })
         df.to_excel(writer, sheet_name=name, index=False)
 
@@ -323,153 +302,187 @@ def export_excel(results):
 
 def show_second(res):
     root = tk.Tk()
-    root.title("XER Quality Checker – Sonuçlar")
-    root.geometry("1100x750")
+    root.title("XER Quality Checker – Results")
+    root.geometry("1100x900")
     root.configure(bg="#f0f4f7")
 
-    tk.Label(root, text="Kontrol Sonuçları", font=("Arial", 22, "bold"), bg="#f0f4f7").pack(pady=15)
+    tk.Label(root, text="Quality Check Results", font=("Arial", 22, "bold"), bg="#f0f4f7").pack(pady=15)
 
-    tree = ttk.Treeview(root, columns=("Şart", "Durum", "Açıklama", "Rapor"), show="headings")
-    tree.heading("Şart", text="Şart")
-    tree.heading("Durum", text="Durum")
-    tree.heading("Açıklama", text="Açıklama")
-    tree.heading("Rapor", text="Rapor")
+    tree = ttk.Treeview(root, columns=("Condition", "Status", "Description", "Report"), show="headings")
+    tree.heading("Condition", text="Condition")
+    tree.heading("Status", text="Status")
+    tree.heading("Description", text="Description")
+    tree.heading("Report", text="Report")
 
-    tree.column("Şart", width=300)
-    tree.column("Durum", width=80)
-    tree.column("Açıklama", width=600)
-    tree.column("Rapor", width=100)
+    tree.column("Condition", width=300)
+    tree.column("Status", width=80)
+    tree.column("Description", width=600)
+    tree.column("Report", width=100)
 
     tree.pack(fill="both", expand=True)
 
+    # --- FULL DESCRIPTION PANEL ---
+    desc_label = tk.Label(root, text="Full Description:", font=("Arial", 14, "bold"), bg="#f0f4f7")
+    desc_label.pack(pady=10)
+
+    desc_box = tk.Text(root, height=8, wrap="word", font=("Arial", 12))
+    desc_box.pack(fill="x", padx=20)
+
+    def on_select(event):
+        item = tree.selection()
+        if item:
+            desc = tree.item(item, "values")[2]
+            desc_box.delete("1.0", tk.END)
+            desc_box.insert(tk.END, desc)
+
+    tree.bind("<<TreeviewSelect>>", on_select)
+
+    # ---- ROWS (Conditions) ----
     if res["ff_ss_ok"]:
-        aciklama = "FF ve SS ilişkileri toplam aktivite sayısının %20 sınırı içinde."
+        desc = "FF and SS relationships are within the 20% limit."
+        status = "✔"
     else:
-        aciklama = (
-            f"FF ve SS ilişkileri limitin üzerinde. Toplam {res['ff_ss_total']} ilişki var; "
-            f"izin verilen üst sınır {int(res['ff_ss_limit'])}."
+        desc = (
+            f"FF and SS relationships exceed the limit. "
+            f"There are {res['ff_ss_total']} relationships total; "
+            f"the maximum allowed is {int(res['ff_ss_limit'])}."
         )
+        status = "❌"
     tree.insert("", "end", values=(
-        "FF + SS Limit %20",
-        "✔" if res["ff_ss_ok"] else "❌",
-        aciklama,
-        "Detay"
+        "FF + SS Limit 20%",
+        status,
+        desc,
+        "Detail"
     ))
 
     if res["sf"] == 0:
-        aciklama = "Plan içerisinde SF (Start-to-Finish) ilişkisi bulunmamaktadır."
+        desc = "No SF (Start-to-Finish) relationships were found in the schedule."
+        status = "✔"
     else:
-        aciklama = (
-            f"Plan içerisinde {res['sf']} adet SF (Start-to-Finish) ilişkisi tespit edilmiştir. "
-            "SF ilişkisi mantıksal akışın geriye bağlanmasına neden olduğu için kullanılmamalıdır."
+        desc = (
+            f"{res['sf']} SF (Start-to-Finish) relationships were detected in the plan. "
+            "SF relationships should not be used because they break logical flow."
         )
+        status = "❌"
     tree.insert("", "end", values=(
-        "SF ilişkisi olmamalı",
-        "✔" if res["sf"] == 0 else "❌",
-        aciklama,
-        "Detay"
+        "SF relationship should not exist",
+        status,
+        desc,
+        "Detail"
     ))
 
     if res["lag"] == 0:
-        aciklama = "Hiçbir ilişkide lag kullanılmamıştır."
+        desc = "No lag usage was detected in any relationship."
+        status = "✔"
     else:
-        aciklama = (
-            f"{res['lag']} adet ilişkide lag kullanımı tespit edilmiştir. "
-            "Lag kullanımı minimum seviyede tutulmalıdır."
+        desc = (
+            f"Lag usage was detected in {res['lag']} relationships. "
+            "Lag usage should be kept to a minimum."
         )
+        status = "❌"
     tree.insert("", "end", values=(
-        "Lag kullanımı minimum olmalı",
-        "✔" if res["lag"] == 0 else "❌",
-        aciklama,
-        "Detay"
+        "Lag usage should be minimal",
+        status,
+        desc,
+        "Detail"
     ))
 
     if len(res["open_start"]) == 0:
-        aciklama = "Tüm aktivitelerin en az bir predecessor'ı bulunmaktadır."
+        desc = "All activities have at least one predecessor (no Open-Start)."
+        status = "✔"
     else:
-        aciklama = (
-            f"{len(res['open_start'])} aktivitenin predecessor'ı bulunmamaktadır (Open-Start). "
-            "Bu aktiviteler mantıksal ağ içinde başlangıç noktası olarak kontrol edilmelidir."
+        desc = (
+            f"{len(res['open_start'])} activities do not have a predecessor (Open-Start). "
+            "These should be reviewed as possible start nodes in the logical network."
         )
+        status = "❌"
     tree.insert("", "end", values=(
-        "Open‑Start olmamalı",
-        "✔" if len(res["open_start"]) == 0 else "❌",
-        aciklama,
-        "Detay"
+        "Open-Start should not exist",
+        status,
+        desc,
+        "Detail"
     ))
 
     if len(res["open_finish"]) == 0:
-        aciklama = "Tüm aktivitelerin en az bir successor'ı bulunmaktadır."
+        desc = "All activities have at least one successor (no Open-Finish)."
+        status = "✔"
     else:
-        aciklama = (
-            f"{len(res['open_finish'])} aktivitenin successor'ı bulunmamaktadır (Open-Finish). "
-            "Bu aktiviteler mantıksal ağ içinde bitiş noktası olarak kontrol edilmelidir."
+        desc = (
+            f"{len(res['open_finish'])} activities do not have a successor (Open-Finish). "
+            "These should be reviewed as possible end nodes in the logical network."
         )
+        status = "❌"
     tree.insert("", "end", values=(
-        "Open‑Finish olmamalı",
-        "✔" if len(res["open_finish"]) == 0 else "❌",
-        aciklama,
-        "Detay"
+        "Open-Finish should not exist",
+        status,
+        desc,
+        "Detail"
     ))
 
     if len(res["long_duration"]) == 0:
-        aciklama = "Hiçbir aktivitenin süresi 14 günü aşmamaktadır."
+        desc = "No activities are longer than 14 days."
+        status = "✔"
     else:
-        aciklama = (
-            f"{len(res['long_duration'])} aktivitenin süresi 14 günden uzundur. "
-            "Uzun süreli aktiviteler, daha küçük ve yönetilebilir parçalara bölünmelidir."
+        desc = (
+            f"{len(res['long_duration'])} activities are longer than 14 days. "
+            "Long-duration activities should be broken into smaller, more manageable segments."
         )
+        status = "❌"
     tree.insert("", "end", values=(
-        "Aktivite süresi ≤ 14 gün",
-        "✔" if len(res["long_duration"]) == 0 else "❌",
-        aciklama,
-        "Detay"
+        "Activity duration ≤ 14 days",
+        status,
+        desc,
+        "Detail"
     ))
 
     if len(res["high_float"]) == 0:
-        aciklama = "Hiçbir aktivitenin total float değeri proje süresinin %20’sini aşmamaktadır."
+        desc = "No activities exceed the 20% total float limit of the project duration."
+        status = "✔"
     else:
-        aciklama = (
-            f"{len(res["high_float"])} aktivitenin total float değeri proje süresinin %20 limitini aşmaktadır. "
-            "Yüksek float değerleri, ağ mantığının ve kritik yolun yeniden gözden geçirilmesini gerektirir."
+        desc = (
+            f"{len(res['high_float'])} activities exceed the 20% total float limit of the project duration. "
+            "High float values may indicate that the schedule logic or critical path needs to be reviewed."
         )
+        status = "❌"
     tree.insert("", "end", values=(
-        "Float ≤ %20 limit",
-        "✔" if len(res["high_float"]) == 0 else "❌",
-        aciklama,
-        "Detay"
+        "Float ≤ 20% limit",
+        status,
+        desc,
+        "Detail"
     ))
 
-    def on_click(event):
+    # ---- DOUBLE-CLICK REPORT HANDLER ----
+    def on_double_click(event):
         item = tree.identify_row(event.y)
         if not item:
             return
         values = tree.item(item, "values")
-        şart = values[0]
+        condition = values[0]
 
-        if şart == "FF + SS Limit %20":
-            show_report("FF + SS İlişkileri", res["ff_list"] + res["ss_list"], res)
-        elif şart == "SF ilişkisi olmamalı":
-            show_report("SF İlişkileri", res["sf_list"], res)
-        elif şart == "Lag kullanımı minimum olmalı":
-            show_report("Lag İçeren Aktiviteler", res["lag_list"], res)
-        elif şart == "Open‑Start olmamalı":
-            show_report("Open‑Start Aktiviteleri", res["open_start"], res)
-        elif şart == "Open‑Finish olmamalı":
-            show_report("Open‑Finish Aktiviteleri", res["open_finish"], res)
-        elif şart == "Aktivite süresi ≤ 14 gün":
-            show_report("14 Günden Uzun Aktiviteler", res["long_duration"], res)
-        elif şart == "Float ≤ %20 limit":
-            show_report("Float Limitini Aşan Aktiviteler", res["high_float"], res)
+        if condition == "FF + SS Limit 20%":
+            show_report("FF + SS Relationships", res["ff_list"] + res["ss_list"], res)
+        elif condition == "SF relationship should not exist":
+            show_report("SF Relationships", res["sf_list"], res)
+        elif condition == "Lag usage should be minimal":
+            show_report("Lagged Relationships", res["lag_list"], res)
+        elif condition == "Open-Start should not exist":
+            show_report("Open-Start Activities", res["open_start"], res)
+        elif condition == "Open-Finish should not exist":
+            show_report("Open-Finish Activities", res["open_finish"], res)
+        elif condition == "Activity duration ≤ 14 days":
+            show_report("Activities > 14 Days", res["long_duration"], res)
+        elif condition == "Float ≤ 20% limit":
+            show_report("Float Above 20% Limit", res["high_float"], res)
 
-    tree.bind("<Double-1>", on_click)
+    tree.bind("<Double-1>", on_double_click)
 
+    # ---- BUTTONS ----
     btn_frame = tk.Frame(root, bg="#f0f4f7")
     btn_frame.pack(pady=15)
 
     tk.Button(
         btn_frame,
-        text="PDF Olarak Kaydet",
+        text="Export PDF",
         font=("Arial", 12, "bold"),
         command=lambda: export_pdf(res),
         bg="#4CAF50",
@@ -479,7 +492,7 @@ def show_second(res):
 
     tk.Button(
         btn_frame,
-        text="Excel'e Aktar",
+        text="Export Excel",
         font=("Arial", 12, "bold"),
         command=lambda: export_excel(res),
         bg="#2196F3",
@@ -489,6 +502,7 @@ def show_second(res):
 
     root.mainloop()
 
+
 def show_first():
     root = tk.Tk()
     root.title("XER Quality Checker")
@@ -497,45 +511,42 @@ def show_first():
 
     tk.Label(root, text="XER Quality Checker", font=("Arial", 26, "bold"), bg="#e8eef3").pack(pady=20)
 
-    tk.Label(root, text="Kalite Şartları", font=("Arial", 18, "bold"), bg="#e8eef3").pack(pady=10)
+    tk.Label(root, text="Quality Criteria", font=("Arial", 18, "bold"), bg="#e8eef3").pack(pady=10)
 
-    şartlar = [
-        "FF + SS ilişkileri toplam aktivite sayısının %20’sini aşmamalıdır.",
-        "SF ilişkisi plan içerisinde bulunmamalıdır.",
-        "Lag kullanımı minimum seviyede olmalıdır.",
-        "Open‑Start aktivitesi bulunmamalıdır.",
-        "Open‑Finish aktivitesi bulunmamalıdır.",
-        "Aktivite süresi 14 günü aşmamalıdır.",
-        "Total float proje süresinin %20’sini aşmamalıdır."
+    criteria = [
+        "FF + SS relationships must not exceed 20% of total activities.",
+        "No SF relationship should appear in the plan.",
+        "Lag usage should be kept to a minimum.",
+        "No Open‑Start activity should exist.",
+        "No Open‑Finish activity should exist.",
+        "Activity duration should not exceed 14 days.",
+        "Total float should not exceed 20% of the project duration."
     ]
 
-    tree = ttk.Treeview(root, columns=("Şart"), show="headings")
-    tree.heading("Şart", text="Kalite Şartları")
-    tree.column("Şart", width=850)
+    tree = ttk.Treeview(root, columns=("Condition"), show="headings")
+    tree.heading("Condition", text="Quality Criteria")
+    tree.column("Condition", width=850)
     tree.pack(fill="both", expand=True)
 
-    for s in şartlar:
-        tree.insert("", "end", values=(s,))
+    for item in criteria:
+        tree.insert("", "end", values=(item,))
 
     def select_file():
         path = filedialog.askopenfilename(
-            title="XER dosyasını seç",
+            title="Select XER file",
             filetypes=[("XER Files", "*.xer"), ("All Files", "*.*")]
         )
         if path:
             xer = read_xer(path)
             results = analyze(xer)
-
-            # analyze SONRASI EK ADIM: VLOOKUP map’leri ekle
             code_map, name_map = build_task_map(xer)
             results["code_map"] = code_map
             results["name_map"] = name_map
-
             show_second(results)
 
     tk.Button(
         root,
-        text="XER Dosyası Seç ve Kontrol Et",
+        text="Select XER File and Check",
         font=("Arial", 12, "bold"),
         command=select_file,
         bg="#4CAF50",
